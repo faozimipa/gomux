@@ -1,0 +1,6 @@
+.env
+*.sqlite
+*.idea/*
+*.idea
+*.idea/.*
+.DS_Store
