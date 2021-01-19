@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/faozmipa/gomux/api/controllers"
-	"github.com/faozmipa/gomux/api/models"
+	"github.com/faozimipa/gomux/api/controllers"
+	"github.com/faozimipa/gomux/api/models"
 	"github.com/jinzhu/gorm"
 	"github.com/joho/godotenv"
 )
