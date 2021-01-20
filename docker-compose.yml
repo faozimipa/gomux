@@ -14,6 +14,22 @@ services:
     networks:
       - gomux
 
+  gomux-redis:
+    image: redis:alpine
+    container_name: gomux_redis_container
+    command: redis-server --requirepass ${REDIS_PASS}
+    ports:
+      - "6379:6379"
+    volumes:
+      - $PWD/redis-data:/var/lib/redis
+      - $PWD/redis.conf:/usr/local/etc/redis/redis.conf
+
+    environment:
+      - REDIS_REPLICATION_MODE=master
+
+    networks:
+      - gomux
+
   gomux-postgres:
     image: postgres:latest
     container_name: full_db_postgres
