@@ -23,4 +23,9 @@ func (s *Server) initializeRoutes() {
 	s.Router.HandleFunc("/posts/{id}", middlewares.SetMiddlewareJSON(s.GetPost)).Methods("GET")
 	s.Router.HandleFunc("/posts/{id}", middlewares.SetMiddlewareJSON(middlewares.SetMiddlewareAuthentication(s.UpdatePost))).Methods("PUT")
 	s.Router.HandleFunc("/posts/{id}", middlewares.SetMiddlewareAuthentication(s.DeletePost)).Methods("DELETE")
+
+	//test redis
+	s.Router.HandleFunc("/test", middlewares.SetMiddlewareJSON(s.TestRedis)).Methods("GET")
+	s.Router.HandleFunc("/test-set", middlewares.SetMiddlewareJSON(s.SetData)).Methods("GET")
+	s.Router.HandleFunc("/test-get", middlewares.SetMiddlewareJSON(s.GetData)).Methods("GET")
 }
