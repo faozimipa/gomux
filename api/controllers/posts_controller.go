@@ -94,8 +94,14 @@ func (server *Server) UpdatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//CHeck if the auth token is valid and  get the user id from it
-	uid, err := auth.ExtractTokenID(r)
+	tokenAuth, err := auth.ExtractTokenMetadata(r)
+	if err != nil {
+		responses.ERROR(w, http.StatusUnauthorized, errors.New("Unauthorized here"))
+		return
+	}
+
+	//Check if the auth token is valid and  get the user id from it
+	uid, err := auth.FetchAuth(tokenAuth)
 	if err != nil {
 		responses.ERROR(w, http.StatusUnauthorized, errors.New("Unauthorized"))
 		return

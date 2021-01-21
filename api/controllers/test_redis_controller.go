@@ -14,7 +14,6 @@ import (
 var ctx = context.Background()
 
 func (server *Server) TestRedis(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Sampe sini kok.")
 	c := redismanager.InitRedisClient()
 	defer c.Close()
 

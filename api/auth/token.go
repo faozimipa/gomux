@@ -58,7 +58,7 @@ func CreateAuth(userid uint32, td *models.TokenDetails) error {
 	client := redismanager.InitRedisClient()
 	defer client.Close()
 
-	at := time.Unix(td.AtExpires, 0) //converting Unix to UTC(to Time object)
+	at := time.Unix(td.AtExpires, 0)
 	rt := time.Unix(td.RtExpires, 0)
 	now := time.Now()
 
@@ -125,6 +125,58 @@ func ExtractTokenID(r *http.Request) (uint32, error) {
 		return uint32(uid), nil
 	}
 	return 0, nil
+}
+
+func VerifyToken(r *http.Request) (*jwt.Token, error) {
+	tokenString := ExtractToken(r)
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		//Make sure that the token method conform to "SigningMethodHMAC"
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(os.Getenv("API_SECRET")), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return token, nil
+}
+
+func ExtractTokenMetadata(r *http.Request) (*models.AccessDetails, error) {
+	token, err := VerifyToken(r)
+	if err != nil {
+		return nil, err
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if ok && token.Valid {
+		accessUuid, ok := claims["access_uuid"].(string)
+		if !ok {
+			return nil, err
+		}
+		userId, err := strconv.ParseUint(fmt.Sprintf("%.f", claims["user_id"]), 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		return &models.AccessDetails{
+			AccessUuid: accessUuid,
+			UserId:     uint32(userId),
+		}, nil
+	}
+	return nil, err
+}
+
+func FetchAuth(authD *models.AccessDetails) (uint32, error) {
+	client := redismanager.InitRedisClient()
+	defer client.Close()
+
+	userid, err := client.Get(ctx, authD.AccessUuid).Result()
+	if err != nil {
+		return 0, err
+	}
+	userID, _ := strconv.ParseUint(userid, 10, 64)
+
+	return uint32(userID), nil
 }
 
 //Pretty display the claims licely in the terminal

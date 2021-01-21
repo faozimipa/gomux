@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"net/http"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/faozimipa/gomux/api/models"
 	"github.com/faozimipa/gomux/api/responses"
 	"github.com/faozimipa/gomux/api/utils/formaterror"
+	"github.com/faozimipa/gomux/api/utils/redismanager"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -38,7 +40,8 @@ func (server *Server) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	saveErr := auth.CreateAuth(user.ID, ts)
+	getUser, _ := user.FindUserByEmail(server.DB, user.Email)
+	saveErr := auth.CreateAuth(getUser.ID, ts)
 
 	if saveErr != nil {
 		formattedError2 := formaterror.FormatError(saveErr.Error())
@@ -68,4 +71,31 @@ func (server *Server) SignIn(email, password string) (*models.TokenDetails, erro
 		return nil, err
 	}
 	return auth.CreateToken(user.ID)
+}
+
+func DeleteAuth(givenUuid string) (int64, error) {
+	c := redismanager.InitRedisClient()
+	defer c.Close()
+	deleted, err := c.Del(ctx, givenUuid).Result()
+	if err != nil {
+		return 0, err
+	}
+	return deleted, nil
+}
+
+func (server *Server) Logout(w http.ResponseWriter, r *http.Request) {
+
+	au, err := auth.ExtractTokenMetadata(r)
+	if err != nil {
+		responses.ERROR(w, http.StatusUnauthorized, errors.New("Unauthorized"))
+		return
+	}
+
+	deleted, delErr := DeleteAuth(au.AccessUuid)
+	if delErr != nil || deleted == 0 {
+		responses.ERROR(w, http.StatusUnauthorized, errors.New("Unauthorized"))
+		return
+	}
+
+	responses.JSON(w, http.StatusOK, "Successfully logged out")
 }
