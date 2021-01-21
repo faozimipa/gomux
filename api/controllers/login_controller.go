@@ -31,16 +31,29 @@ func (server *Server) Login(w http.ResponseWriter, r *http.Request) {
 		responses.ERROR(w, http.StatusUnprocessableEntity, err)
 		return
 	}
-	token, err := server.SignIn(user.Email, user.Password)
+	ts, err := server.SignIn(user.Email, user.Password)
 	if err != nil {
 		formattedError := formaterror.FormatError(err.Error())
 		responses.ERROR(w, http.StatusUnprocessableEntity, formattedError)
 		return
 	}
-	responses.JSON(w, http.StatusOK, token)
+
+	saveErr := auth.CreateAuth(user.ID, ts)
+
+	if saveErr != nil {
+		formattedError2 := formaterror.FormatError(saveErr.Error())
+		responses.ERROR(w, http.StatusUnprocessableEntity, formattedError2)
+	}
+
+	tokens := map[string]string{
+		"access_token":  ts.AccessToken,
+		"refresh_token": ts.RefreshToken,
+	}
+
+	responses.JSON(w, http.StatusOK, tokens)
 }
 
-func (server *Server) SignIn(email, password string) (string, error) {
+func (server *Server) SignIn(email, password string) (*models.TokenDetails, error) {
 
 	var err error
 
@@ -48,11 +61,11 @@ func (server *Server) SignIn(email, password string) (string, error) {
 
 	err = server.DB.Debug().Model(models.User{}).Where("email = ?", email).Take(&user).Error
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	err = models.VerifyPassword(user.Password, password)
 	if err != nil && err == bcrypt.ErrMismatchedHashAndPassword {
-		return "", err
+		return nil, err
 	}
 	return auth.CreateToken(user.ID)
 }

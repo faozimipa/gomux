@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,16 +12,66 @@ import (
 	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/faozimipa/gomux/api/utils/redismanager"
+	"github.com/twinj/uuid"
+
+	"github.com/faozimipa/gomux/api/models"
 )
 
-func CreateToken(user_id uint32) (string, error) {
+var ctx = context.Background()
+
+func CreateToken(user_id uint32) (*models.TokenDetails, error) {
+	td := &models.TokenDetails{}
+	td.AtExpires = time.Now().Add(time.Minute * 15).Unix()
+	td.AccessUuid = uuid.NewV4().String()
+
+	td.RtExpires = time.Now().Add(time.Hour * 24 * 7).Unix()
+	td.RefreshUuid = uuid.NewV4().String()
+
+	var err error
+	//Creating Access Token
 	claims := jwt.MapClaims{}
 	claims["authorized"] = true
+	claims["access_uuid"] = td.AccessUuid
 	claims["user_id"] = user_id
-	claims["exp"] = time.Now().Add(time.Hour * 1).Unix() //Token expires after 1 hour
+	claims["exp"] = td.AtExpires
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(os.Getenv("API_SECRET")))
+	td.AccessToken, err = token.SignedString([]byte(os.Getenv("API_SECRET")))
+	if err != nil {
+		return nil, err
+	}
 
+	//Creating Refresh Token
+	rtClaims := jwt.MapClaims{}
+	rtClaims["refresh_uuid"] = td.RefreshUuid
+	rtClaims["user_id"] = user_id
+	rtClaims["exp"] = td.RtExpires
+	rt := jwt.NewWithClaims(jwt.SigningMethodHS256, rtClaims)
+	td.RefreshToken, err = rt.SignedString([]byte(os.Getenv("API_SECRET")))
+	if err != nil {
+		return nil, err
+	}
+	return td, nil
+}
+
+func CreateAuth(userid uint32, td *models.TokenDetails) error {
+	client := redismanager.InitRedisClient()
+	defer client.Close()
+
+	at := time.Unix(td.AtExpires, 0) //converting Unix to UTC(to Time object)
+	rt := time.Unix(td.RtExpires, 0)
+	now := time.Now()
+
+	errAccess := client.Set(ctx, td.AccessUuid, strconv.Itoa(int(userid)), at.Sub(now)).Err()
+	if errAccess != nil {
+		return errAccess
+	}
+	errRefresh := client.Set(ctx, td.RefreshUuid, strconv.Itoa(int(userid)), rt.Sub(now)).Err()
+	if errRefresh != nil {
+		return errRefresh
+	}
+
+	return nil
 }
 
 func TokenValid(r *http.Request) error {
