@@ -142,6 +142,28 @@ func VerifyToken(r *http.Request) (*jwt.Token, error) {
 	return token, nil
 }
 
+func IsValidRefreshToken(refreshToken string) (*jwt.Token, error) {
+	//verify the token
+	token, err := jwt.Parse(refreshToken, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(os.Getenv("API_SECRET")), nil
+	})
+	//if there is an error, the token must have expired
+	if err != nil {
+		return nil, err
+	}
+
+	//is token valid?
+	if _, ok := token.Claims.(jwt.Claims); !ok && !token.Valid {
+		return nil, err
+	}
+
+	return token, nil
+
+}
+
 func ExtractTokenMetadata(r *http.Request) (*models.AccessDetails, error) {
 	token, err := VerifyToken(r)
 	if err != nil {

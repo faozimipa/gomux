@@ -3,9 +3,12 @@ package controllers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/faozimipa/gomux/api/auth"
 	"github.com/faozimipa/gomux/api/models"
 	"github.com/faozimipa/gomux/api/responses"
@@ -71,6 +74,67 @@ func (server *Server) SignIn(email, password string) (*models.TokenDetails, erro
 		return nil, err
 	}
 	return auth.CreateToken(user.ID)
+}
+
+func (server *Server) Refresh(w http.ResponseWriter, r *http.Request) {
+	var rt map[string]string
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&rt); err != nil {
+		responses.ERROR(w, http.StatusBadRequest, errors.New("Invalid request payload"))
+		return
+	}
+	defer r.Body.Close()
+	refreshToken, ok := rt["refresh_token"]
+	if ok {
+		token, err := auth.IsValidRefreshToken(refreshToken)
+
+		if err != nil {
+			responses.ERROR(w, http.StatusBadRequest, errors.New("Invalid request payload"))
+			return
+		}
+		//Since token is valid, get the uuid:
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if ok && token.Valid {
+			refreshUuid, ok := claims["refresh_uuid"].(string)
+			if !ok {
+				responses.ERROR(w, http.StatusUnprocessableEntity, err)
+				return
+			}
+			userId, err := strconv.ParseUint(fmt.Sprintf("%.f", claims["user_id"]), 10, 64)
+			if err != nil {
+				responses.ERROR(w, http.StatusUnprocessableEntity, errors.New("Error occurred"))
+				return
+			}
+			//Delete the previous Refresh Token
+			deleted, delErr := DeleteAuth(refreshUuid)
+			if delErr != nil || deleted == 0 {
+				responses.ERROR(w, http.StatusUnauthorized, errors.New("unauthorized"))
+				return
+			}
+			//Create new pairs of refresh and access tokens
+			ts, createErr := auth.CreateToken(uint32(userId))
+			if createErr != nil {
+				responses.ERROR(w, http.StatusForbidden, createErr)
+				return
+			}
+			//save the tokens metadata to redis
+			saveErr := auth.CreateAuth(uint32(userId), ts)
+			if saveErr != nil {
+				responses.ERROR(w, http.StatusForbidden, saveErr)
+				return
+			}
+			tokens := map[string]string{
+				"access_token":  ts.AccessToken,
+				"refresh_token": ts.RefreshToken,
+			}
+			responses.JSON(w, http.StatusCreated, tokens)
+		} else {
+			responses.ERROR(w, http.StatusUnauthorized, errors.New("refresh expired"))
+		}
+	} else {
+		responses.ERROR(w, http.StatusBadRequest, errors.New("Invalid token"))
+		return
+	}
 }
 
 func DeleteAuth(givenUuid string) (int64, error) {
